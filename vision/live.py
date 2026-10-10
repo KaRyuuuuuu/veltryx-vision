@@ -51,7 +51,7 @@ def main():
                                 data = pytesseract.image_to_data(gray,
                                     config="--psm 11 -c tessedit_char_whitelist=0123456789",
                                     output_type=pytesseract.Output.DICT)
-                                ranked = [(re.sub(r"\\D", "", t), float(c))
+                                ranked = [(re.sub(r"\D", "", t), float(c))
                                           for t, c in zip(data["text"], data["conf"])]
                                 ranked = [(t, c) for t, c in ranked if 1 <= len(t) <= 4 and c >= 40]
                                 if ranked:
