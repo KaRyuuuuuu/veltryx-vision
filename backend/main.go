@@ -42,6 +42,7 @@ func main() {
  worker,err=filepath.Abs(worker); if err!=nil {log.Fatal(err)}
  mux:=http.NewServeMux()
  registerLive(mux,py)
+ registerEvents(mux,py)
  mux.HandleFunc("GET /api/health",func(w http.ResponseWriter,r *http.Request){respond(w,map[string]string{"status":"ok"})})
  mux.HandleFunc("GET /api/jobs",func(w http.ResponseWriter,r *http.Request){
   state.Lock();defer state.Unlock()
