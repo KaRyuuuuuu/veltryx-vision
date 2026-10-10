@@ -21,6 +21,8 @@ class OverlayState:
         self.event = "READY"
         self.car = ""
         self.flag = "UNKNOWN"
+        self.width = 0
+        self.height = 0
 
     def update(self, data):
         if not isinstance(data, dict):
@@ -76,19 +78,22 @@ def make_server(state, port):
     return server
 
 
-def draw_overlay(overlay, cairo_ctx, timestamp, duration, state):
-    # Cairo's video overlay units match the decoded frame resolution.
-    _, _, width, height = overlay.get_property("caps").get_structure(0).get_fraction("framerate") if False else (0, 0, 0, 0)
-    # Use dimensions reported by caps from the signal.
-    caps = overlay.get_property("caps")
-    if caps is None:
-        return
+def on_caps_changed(overlay, caps, state):
     structure = caps.get_structure(0)
     ok_w, width = structure.get_int("width")
     ok_h, height = structure.get_int("height")
-    if not ok_w or not ok_h:
+    if ok_w and ok_h:
+        with state.lock:
+            state.width = width
+            state.height = height
+
+
+def draw_overlay(overlay, cairo_ctx, timestamp, duration, state):
+    with state.lock:
+        width, height = state.width, state.height
+    if width <= 0 or height <= 0:
         return
-    state_data = state.snapshot()
+    current = state.snapshot()
     scale = max(0.65, width / 1280.0)
     band_h = 60 * scale
     cairo_ctx.set_source_rgba(0.02, 0.06, 0.1, 0.82)
@@ -98,15 +103,14 @@ def draw_overlay(overlay, cairo_ctx, timestamp, duration, state):
     cairo_ctx.set_font_size(26 * scale)
     cairo_ctx.set_source_rgb(1, 1, 1)
     now = datetime.now().strftime("%H:%M:%S")
-    car = (" #" + state_data["car"]) if state_data["car"] else ""
-    text = f'{now}  |  {state_data["label"]}  |  {state_data["event"]}{car}  |  {state_data["flag"]}'
-    # Scale down to avoid clipping on narrow sensors.
-    extents = cairo_ctx.text_extents(text)
-    text_width = extents.width if hasattr(extents, "width") else extents[2]
+    car = (" #" + current["car"]) if current["car"] else ""
+    line = f'{now}  |  {current["label"]}  |  {current["event"]}{car}  |  {current["flag"]}'
+    extent = cairo_ctx.text_extents(line)
+    text_width = extent.width if hasattr(extent, "width") else extent[2]
     if text_width > width - 24 * scale:
         cairo_ctx.set_font_size(max(12, 26 * scale * (width - 24 * scale) / text_width))
-    cairo_ctx.move_to(12 * scale, 40 * scale)
-    cairo_ctx.show_text(text)
+    cairo_ctx.move_to(12 * scale, min(band_h - 9 * scale, 40 * scale))
+    cairo_ctx.show_text(line)
 
 
 def main():
@@ -133,6 +137,7 @@ def main():
     state = OverlayState(args.label)
     server = make_server(state, args.port)
     overlay = pipeline.get_by_name("overlay")
+    overlay.connect("caps-changed", on_caps_changed, state)
     overlay.connect("draw", draw_overlay, state)
     bus = pipeline.get_bus()
     bus.add_signal_watch()
