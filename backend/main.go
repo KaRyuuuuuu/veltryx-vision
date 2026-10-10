@@ -41,6 +41,7 @@ func main() {
  worker:=os.Getenv("VISION_WORKER"); if worker=="" {worker="../vision/analyze.py"}
  worker,err=filepath.Abs(worker); if err!=nil {log.Fatal(err)}
  mux:=http.NewServeMux()
+ registerLive(mux,py)
  mux.HandleFunc("GET /api/health",func(w http.ResponseWriter,r *http.Request){respond(w,map[string]string{"status":"ok"})})
  mux.HandleFunc("GET /api/jobs",func(w http.ResponseWriter,r *http.Request){
   state.Lock();defer state.Unlock()
