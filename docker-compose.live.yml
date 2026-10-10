@@ -4,6 +4,7 @@ services:
     network_mode: host
     restart: "no"
     environment:
+      MTX_RTSPADDRESS: :8555
       MTX_PATHS_CAM_SOURCE: rtsp://127.0.0.1:8554/h264
       MTX_PATHS_CAM_RTSPTRANSPORT: tcp
       MTX_WEBRTCADDRESS: :8889
