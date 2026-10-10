@@ -46,3 +46,13 @@ Aucune charge de décodage ou d'IA n'est lancée sur ris-server-1.
 
 ## Limites de la V1
 OCR sur les voitures entières, faux positifs possibles. Pas de suivi multi-image, pas d'horodatage synchronisé à la ligne, pas de connexion à ris-core. Les événements sont uniquement des **candidats OCR** à valider manuellement; jamais des chronos officiels.
+
+## Aperçu RTSP temps réel (Dragonfly uniquement)
+
+Le navigateur affiche un MJPEG généré localement avec rectangles YOLO et OCR candidat. La caméra **n'est pas modifiée**. L'aperçu fonctionne par snapshots annotés (~6 FPS maximum), pas à 60 FPS, et peut subir une latence importante sur CPU.
+
+1. Depuis Dragonfly, démarre un tunnel SSH RTSP : `ssh -N -L 8554:192.168.101.90:554 karyuu@192.168.103.49` (utilise l'adresse SSH joignable de ris-server-1).
+2. Démarre le backend Go avec `VISION_PYTHON="$(realpath ../.venv/bin/python)" go run .` depuis `backend/`.
+3. Démarre Next.js depuis `web/` avec `npm run dev`, puis clique sur **Démarrer le direct** sur http://localhost:3000.
+
+La source RTSP est volontairement figée sur `rtsp://127.0.0.1:8554/h264` par défaut. Option de lancement du backend : `VISION_LIVE_SOURCE=rtsp://127.0.0.1:8554/h264`. Seules les sources loopback sont acceptées pour éviter de scanner le réseau de production. **Une seule fenêtre de visualisation recommandée** : chaque connexion démarre son propre processus d'inférence. Pour quitter, clique sur « Arrêter le direct ». Ce prototype n'est pas un outil de chronométrage officiel.
