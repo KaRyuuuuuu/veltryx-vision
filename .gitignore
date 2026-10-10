@@ -1,0 +1,12 @@
+.venv/
+node_modules/
+web/.next/
+backend/veltryx-vision
+vision/__pycache__/
+*.pyc
+.env
+*.mkv
+*.mp4
+*.jpg
+*.png
+!web/public/*.png
