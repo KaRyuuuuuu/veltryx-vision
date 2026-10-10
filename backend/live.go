@@ -8,6 +8,7 @@ import (
  "log"
  "mime/multipart"
  "net/http"
+ "net/textproto"
  "os"
  "os/exec"
  "path/filepath"
@@ -47,7 +48,7 @@ func registerLive(mux *http.ServeMux, python string) {
    if size == 0 || size > 8*1024*1024 { log.Print("invalid live frame size"); break }
    frame := make([]byte, size)
    if _, err := io.ReadFull(reader, frame); err != nil { break }
-   part, err := mw.CreatePart(map[string][]string{
+   part, err := mw.CreatePart(textproto.MIMEHeader{
     "Content-Type":{"image/jpeg"},
     "Content-Length":{strconv.Itoa(len(frame))},
    })
