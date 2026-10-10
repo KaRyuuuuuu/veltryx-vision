@@ -17,7 +17,8 @@ sudo pacman -S --needed go nodejs npm python python-pip ffmpeg tesseract tessera
 git clone git@github.com:KaRyuuuuuu/veltryx-vision.git
 cd veltryx-vision
 python -m venv .venv
-.venv/bin/pip install -r vision/requirements.txt
+.venv/bin/python -m pip install -r vision/requirements.txt
+.venv/bin/python -c 'import cv2, ultralytics, pytesseract; print("Vision dependencies OK")'
 cd web && npm install && cd ..
 ```
 Attention : au premier lancement YOLO télécharge un modèle pré-entraîné et peut consommer plusieurs centaines de Mo. Le modèle général détecte les voitures **mais pas spécifiquement les plaques de numéro de course** : l'OCR est expérimental et nécessitera des images annotées pour devenir fiable.
@@ -26,7 +27,7 @@ Attention : au premier lancement YOLO télécharge un modèle pré-entraîné et
 Terminal 1 :
 ```bash
 cd backend
-VISION_PYTHON=../.venv/bin/python go run .
+VISION_PYTHON="$(realpath ../.venv/bin/python)" go run .
 ```
 Terminal 2 :
 ```bash
