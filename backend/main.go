@@ -37,7 +37,7 @@ func main() {
  if root=="" { home,_:=os.UserHomeDir(); root=filepath.Join(home,"Videos") }
  absRoot,err:=filepath.EvalSymlinks(root)
  if err!=nil {log.Fatalf("media root unavailable %q: %v",root,err)}
- py:=os.Getenv("VISION_PYTHON"); if py=="" { py="python" }
+ py:=os.Getenv("VISION_PYTHON"); if py=="" { py="python" } else if strings.ContainsRune(py, os.PathSeparator) { var e error; py,e=filepath.Abs(py);if e!=nil {log.Fatal(e)};py=filepath.Clean(py) }
  worker:=os.Getenv("VISION_WORKER"); if worker=="" {worker="../vision/analyze.py"}
  worker,err=filepath.Abs(worker); if err!=nil {log.Fatal(err)}
  mux:=http.NewServeMux()
