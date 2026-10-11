@@ -146,3 +146,30 @@ local-data/line-crossings/2026-10-11/20261011T130422.573Z.webp
 \`\`\`
 
 Arrêt : \`Ctrl+C\` ou touche \`q\` en prévisualisation. Pour un test court : \`--limit 5\`. Ce script n'utilise **pas SQLite**, contrairement à \`events.py\` ; les fichiers sont horodatés en UTC. Le nom de fichier indique l'heure de sauvegarde sur Dragonfly, pas un temps de passage officiel, et ne garantit pas une synchronisation précise de capture. Démarrer uniquement ce script, sans les autres workers YOLO, pour limiter la chauffe.
+
+
+## Application desktop Line Monitor (Qt)
+
+Une interface de supervision Qt indépendante du backend Go et de YOLO est disponible :
+- caméra RTSP avec polygone de détection dessiné en surimpression ;
+- état READY / MOTION / WARMUP, compteur de pixels et nombre de captures ;
+- réglages seuil / confirmation avant démarrage ;
+- galerie des 200 dernières images WebP avec miniatures, sélection et vue agrandie ;
+- rafraîchissement automatique du dossier toutes les 1,5 secondes ;
+- bouton d'accès au dossier sur disque.
+
+Sur Dragonfly (depuis la racine du dépôt), installer PySide6 dans le même venv :
+\`\`\`bash
+.venv/bin/python -m pip install PySide6
+\`\`\`
+
+Démarrer le tunnel dans un terminal, puis l'application dans un second :
+\`\`\`bash
+bash scripts/camera-tunnel.sh
+# Dans un autre terminal :
+.venv/bin/python vision/line_monitor_gui.py
+\`\`\`
+
+Cliquer sur **Démarrer la surveillance**. L'interface fonctionne sans serveur Go, Next.js, GPU, YOLO ou OCR. Les captures sont stockées dans \`local-data/line-crossings/YYYY-MM-DD/\` et automatiquement ajoutées à la galerie. Le dossier \`local-data\` est ignoré par Git.
+
+Le mode OpenCV \`vision/line_motion.py --preview\` reste disponible comme alternative légère. L'interface Qt ne doit pas être utilisée en parallèle avec lui sur la même caméra pour éviter une connexion RTSP supplémentaire. **Aucun cooldown fixe** : une nouvelle capture est possible après une image calme. Cela ne garantit toutefois pas un déclenchement distinct si deux voitures se suivent sans libérer la zone. Les horodatages sont ceux de sauvegarde, pas des temps de passage homologués.
