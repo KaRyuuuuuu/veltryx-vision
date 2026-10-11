@@ -13,6 +13,7 @@ import time
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
 import cv2
 import pytesseract
+import torch
 from ultralytics import YOLO
 
 
@@ -21,6 +22,9 @@ def main():
     parser.add_argument("--source", required=True)
     args = parser.parse_args()
     model = YOLO("yolo11n.pt")
+    gpu = torch.cuda.is_available()
+    device = 0 if gpu else "cpu"
+    print(f"Live YOLO on {torch.cuda.get_device_name(0) if gpu else 'CPU'}", file=sys.stderr)
     cap = cv2.VideoCapture(args.source, cv2.CAP_FFMPEG)
     if not cap.isOpened():
         raise RuntimeError("RTSP stream unavailable. Check SSH tunnel on :8554")
@@ -35,7 +39,7 @@ def main():
             n += 1
             if n % 5 == 1:
                 last_boxes = []
-                prediction = model.predict(image, imgsz=640, conf=0.35, verbose=False)[0]
+                prediction = model.predict(image, imgsz=640, conf=0.35, device=device, half=gpu, verbose=False)[0]
                 for b in prediction.boxes:
                     cls = int(b.cls[0])
                     if model.names[cls] not in ("car", "truck", "bus", "motorcycle"):
