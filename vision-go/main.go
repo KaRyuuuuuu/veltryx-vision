@@ -15,6 +15,7 @@ import (
  "log"
  "net"
  "net/http"
+ "strconv"
  "os"
  "os/exec"
  "path/filepath"
@@ -75,7 +76,7 @@ func (s *Server) save(ctx context.Context) {
    // Keep image encoding off the RTSP acquisition loop.
    cmd:=exec.CommandContext(ctx,"ffmpeg","-nostdin","-hide_banner","-loglevel","error",
     "-f","rawvideo","-pixel_format","bgr24","-video_size",fmt.Sprintf("%dx%d",snap.width,snap.height),
-    "-i","pipe:0","-frames:v","1","-c:v","libwebp","-quality","82","-y",target)
+    "-i","pipe:0","-frames:v","1","-c:v","libwebp","-q:v","82","-y",target)
    cmd.Stdin=bytes.NewReader(snap.pixels)
    if output,err:=cmd.CombinedOutput();err!=nil {log.Printf("WebP save failed: %v: %s",err,output);continue}
    ev:=Event{ID:id,Time:stamp.Format(time.RFC3339Nano),Path:"/"+stamp.Format("2006-01-02")+"/"+name,Pixels:snap.motion}
@@ -186,12 +187,21 @@ func main(){
  flag.StringVar(&source,"source","rtsp://127.0.0.1:8554/h264","local SSH-forwarded RTSP URL")
  flag.StringVar(&dir,"output","../local-data/go-line-crossings","local snapshot directory")
  flag.StringVar(&addr,"listen","127.0.0.1:8098","HTTP listener (local only)")
- flag.IntVar(&width,"width",960,"decoded source width")
- flag.IntVar(&height,"height",480,"decoded source height")
+ flag.IntVar(&width,"width",0,"decoded source width (0 = probe automatically)")
+ flag.IntVar(&height,"height",0,"decoded source height (0 = probe automatically)")
  flag.IntVar(&fps,"fps",30,"target decoded frame rate; never exceeds camera stream")
  flag.IntVar(&threshold,"threshold",170,"motion pixel threshold in sampled ROI")
  flag.IntVar(&confirm,"confirm",2,"number of consecutive frames to trigger")
  flag.Parse()
+ if width==0 || height==0 {
+  probeCtx,probeCancel:=context.WithTimeout(context.Background(),8*time.Second)
+  out,probeErr:=exec.CommandContext(probeCtx,"ffprobe","-v","error","-rtsp_transport","tcp","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0:s=x",source).Output()
+  probeCancel()
+  if probeErr!=nil {log.Fatalf("Cannot probe RTSP dimensions: %v; ensure SSH tunnel is open",probeErr)}
+  parts:=strings.Split(strings.TrimSpace(string(out)),"x")
+  if len(parts)<2 {log.Fatalf("Unexpected ffprobe output: %q",out)}
+  width,_=strconv.Atoi(parts[0]);height,_=strconv.Atoi(parts[1])
+ }
  if width<=0||height<=0||width*height>1920*1080||fps<1||fps>60||confirm<1||threshold<1{
   log.Fatal("invalid dimensions/fps/detection settings")
  }
