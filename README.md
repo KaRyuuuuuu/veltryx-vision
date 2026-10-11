@@ -173,3 +173,45 @@ bash scripts/camera-tunnel.sh
 Cliquer sur **Démarrer la surveillance**. L'interface fonctionne sans serveur Go, Next.js, GPU, YOLO ou OCR. Les captures sont stockées dans \`local-data/line-crossings/YYYY-MM-DD/\` et automatiquement ajoutées à la galerie. Le dossier \`local-data\` est ignoré par Git.
 
 Le mode OpenCV \`vision/line_motion.py --preview\` reste disponible comme alternative légère. L'interface Qt ne doit pas être utilisée en parallèle avec lui sur la même caméra pour éviter une connexion RTSP supplémentaire. **Aucun cooldown fixe** : une nouvelle capture est possible après une image calme. Cela ne garantit toutefois pas un déclenchement distinct si deux voitures se suivent sans libérer la zone. Les horodatages sont ceux de sauvegarde, pas des temps de passage homologués.
+
+
+## V2 indépendante en Go + site Node/Next.js
+
+**Prototype expérimental pour Dragonfly, non testé sur la caméra réelle.** L'ancienne application Python reste intacte.
+
+`vision-go/` exécute un seul décodeur FFmpeg RTSP et un détecteur de mouvement léger sans YOLO/OCR/CUDA. Chaque déclenchement envoie une image brute à une **file d'écriture bornée** (24 éléments) ; le WebP est encodé dans une goroutine séparée. Le moteur se reconnecte en cas de déconnexion, réinitialise son état après reconnexion et expose son état en HTTP sur `127.0.0.1:8098`.
+
+Le site **Node/Next.js** sur `http://localhost:3000/line` affiche l'aperçu, les métriques et la galerie auto-actualisée, via un proxy Next.js côté serveur. Il **ne démarre aucun nouveau worker RTSP** lorsqu'on ouvre la page.
+
+### Lancement sur Arch / Dragonfly
+
+```bash
+# Terminal 1 : redirection Basler
+cd ~/Projects/veltryx-vision
+bash scripts/camera-tunnel.sh
+
+# Terminal 2 : moteur Go (aucun Python requis)
+cd ~/Projects/veltryx-vision/vision-go
+go run . -fps 30 -threshold 170 -confirm 2
+
+# Terminal 3 : site Node
+cd ~/Projects/veltryx-vision/web
+npm install
+npm run dev
+```
+
+Ouvrir `http://localhost:3000/line`. La caméra est sondée automatiquement par FFprobe pour trouver sa résolution ; le tunnel SSH doit donc être ouvert avant le lancement de Go. `ffmpeg` et `ffprobe` sont requis. Lancer **sans les scripts de détection Python** pour éviter les connexions RTSP en double et la surcharge de Dragonfly.
+
+Les fichiers se trouvent dans `local-data/go-line-crossings/YYYY-MM-DD/*.webp` et le journal `local-data/go-line-crossings/events.jsonl`. Le répertoire est exclu de Git. **Cette V2 utilise JSONL pour l'index local, pas SQLite** ; une migration SQLite restera à faire si nécessaire.
+
+Commandes utiles : `go run . -fps 15` pour réduire la charge, `go run . -threshold 300 -confirm 2` pour tester un seuil plus strict, `go run . -help` pour tous les réglages.
+
+### Limites et sécurité
+
+- Les FPS affichés sont des cadences reçues, pas une garantie que chaque voiture est enregistrée.
+- Le déclenchement utilise une différence d'images dans une zone proche du damier ; plusieurs voitures accolées peuvent être fusionnées et des ombres peuvent provoquer des faux positifs.
+- L'horodatage est pris à la réception sur Dragonfly ; **ce n'est pas un chrono officiel**.
+- L'encodage WebP n'interrompt plus la boucle de capture, mais l'aperçu JPEG est encore encodé sur cette boucle à cadence réduite. Sous forte charge, la file d'écriture peut se saturer : surveiller le compteur `dropped_saves`.
+- En cas de stream H.264 corrompu, le moteur ne peut pas reconstruire les images manquantes. Tester la stabilité avant toute exploitation.
+- Le serveur Go n'écoute que sur le loopback ; l'accès depuis un autre PC via Next.js nécessite de sécuriser le site avec authentification et HTTPS. Ne pas l'exposer publiquement en l'état.
+
