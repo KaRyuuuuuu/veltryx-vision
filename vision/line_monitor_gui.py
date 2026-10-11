@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSize
 from PySide6.QtGui import QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QPushButton, QHBoxLayout,
@@ -207,7 +207,7 @@ class Monitor(QMainWindow):
         hint.setWordWrap(True)
         rl.addWidget(hint)
         self.gallery=QListWidget()
-        self.gallery.setIconSize(__import__("PySide6").QtCore.QSize(90,55))
+        self.gallery.setIconSize(QSize(90,55))
         self.gallery.currentItemChanged.connect(self.show_capture)
         rl.addWidget(self.gallery,1)
         self.detail=QLabel("Aucune capture sélectionnée")
@@ -251,7 +251,9 @@ class Monitor(QMainWindow):
     def stop_worker(self):
         if self.worker:
             self.worker.stop()
-            self.worker.wait(3000)
+            # Keep Qt thread alive until OpenCV releases its reader.
+            # A stuck RTSP read may delay shutdown; never destroy a running QThread.
+            self.worker.wait()
         self.status.setText("●  STOPPED")
         self.startbtn.setText("Démarrer la surveillance")
         self.source.setEnabled(True)
