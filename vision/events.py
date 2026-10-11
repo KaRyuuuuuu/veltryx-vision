@@ -169,7 +169,7 @@ def main():
             start = time.monotonic()
             result = model.track(
                 frame, conf=0.4, imgsz=args.imgsz,
-                device=device, half=gpu, persist=True,
+                device=device, persist=True,
                 tracker="bytetrack.yaml", verbose=False,
             )[0]
             boxes = []
