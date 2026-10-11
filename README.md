@@ -117,3 +117,32 @@ sqlite3 local-data/detections.sqlite3 'SELECT captured_utc_ms,number_candidate,i
 
 Désactiver la persistance lors d'un lancement manuel de `events.py` : `--no-snapshots`. Déplacer les données : `--capture-dir /chemin/local`. Le backend Go utilise le chemin par défaut. Attention : **chaque connexion navigateur `/api/detections` lance actuellement un worker distinct** ; les snapshots sont dédoublonnés *par worker*, pas entre workers. Éviter les multiples onglets. Les captures ne sont pas limitées en volume total et doivent être purgées manuellement lors des tests prolongés.
 
+
+
+## Capture sur mouvement à la ligne (sans IA ni OCR)
+
+Mode autonome léger \`vision/line_motion.py\` : surveille une zone polygonale entourant le damier blanc de la ligne de chronométrage et sauvegarde **l'image entière** lorsqu'un mouvement apparaît. Aucun modèle YOLO, OCR ou CUDA n'est chargé. Il s'agit d'un **déclencheur de mouvement expérimental**, pas d'un vrai capteur de franchissement ni d'une preuve qu'une voiture traverse la ligne.
+
+Sur **Dragonfly**, avec le tunnel SSH déjà ouvert :
+
+\`\`\`bash
+cd ~/Projects/veltryx-vision
+.venv/bin/python vision/line_motion.py --preview
+\`\`\`
+
+La fenêtre \`--preview\` montre la zone jaune détectée. Ajuster si besoin les coordonnées du polygone, qui ont été estimées pour **la capture d'écran de référence 1649x928** et sont automatiquement mises à l'échelle de la résolution réelle du flux :
+
+\`\`\`bash
+.venv/bin/python vision/line_motion.py --preview \
+  --polygon '215,485;355,485;575,905;345,905'
+\`\`\`
+
+Si trop de faux positifs : \`--min-pixels 1800 --consecutive 3\`. Si des véhicules rapides ne déclenchent pas, réduire à \`--min-pixels 450 --consecutive 1\`. \`--cooldown 2\` évite des images rapprochées. Attention : aucun algorithme sans IA ne garantit une capture *uniquement* des voitures ; ombres, personnes ou changements de lumière peuvent déclencher.
+
+Les fichiers sont créés automatiquement dans un dossier **ignoré par Git** :
+
+\`\`\`text
+local-data/line-crossings/2026-10-11/20261011T130422.573Z.webp
+\`\`\`
+
+Arrêt : \`Ctrl+C\` ou touche \`q\` en prévisualisation. Pour un test court : \`--limit 5\`. Ce script n'utilise **pas SQLite**, contrairement à \`events.py\` ; les fichiers sont horodatés en UTC. Le nom de fichier indique l'heure de sauvegarde sur Dragonfly, pas un temps de passage officiel, et ne garantit pas une synchronisation précise de capture. Démarrer uniquement ce script, sans les autres workers YOLO, pour limiter la chauffe.
