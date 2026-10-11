@@ -47,61 +47,90 @@ class Detector(QThread):
         self.running = False
 
     def run(self):
-        cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG)
-        if not cap.isOpened():
-            self.failure.emit("Flux RTSP inaccessible. Vérifie le tunnel SSH.")
-            return
-        bg = cv2.createBackgroundSubtractorMOG2(history=180, varThreshold=38, detectShadows=True)
-        mask = None
-        points = None
-        dims = None
-        consecutive = 0
-        ready = True
-        warmup_until = time.monotonic() + 3
-        last_preview = 0.0
+        reconnect_delay = 1.0
         kernel = np.ones((3,3), np.uint8)
-        try:
-            while self.running:
-                ok, img = cap.read()
-                if not ok:
-                    self.failure.emit("Connexion RTSP interrompue.")
-                    break
-                h, w = img.shape[:2]
-                if dims != (w,h):
-                    dims = (w,h)
-                    points = (POLYGON * [w/REFERENCE[0], h/REFERENCE[1]]).round().astype(np.int32)
-                    mask = np.zeros((h,w), np.uint8)
-                    cv2.fillPoly(mask, [points], 255)
-                fg = bg.apply(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
-                fg = cv2.bitwise_and(fg, mask)
-                _, fg = cv2.threshold(fg, 250, 255, cv2.THRESH_BINARY)
-                fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN, kernel)
-                pixels = cv2.countNonZero(fg)
-                motion = pixels >= self.threshold
-                consecutive = consecutive + 1 if motion else 0
-                if not motion:
-                    ready = True
-                state = "WARMUP" if time.monotonic() < warmup_until else ("MOTION" if motion else "READY")
-                if ready and consecutive >= self.confirm and state != "WARMUP":
-                    ts = datetime.now(timezone.utc)
-                    folder = CAPTURES / ts.strftime("%Y-%m-%d")
-                    folder.mkdir(parents=True, exist_ok=True)
-                    path = folder / (ts.strftime("%Y%m%dT%H%M%S.%f")[:-3] + "Z.webp")
-                    if cv2.imwrite(str(path), img, [cv2.IMWRITE_WEBP_QUALITY, 85]):
-                        self.captured.emit(str(path))
-                        ready = False
-                now = time.monotonic()
-                if now-last_preview > 1/15:
-                    # Draw on preview only; persist the pristine camera frame.
-                    view = img.copy()
-                    cv2.polylines(view, [points], True, (0, 208, 255), 2, cv2.LINE_AA)
-                    self.frame.emit(view)
-                    self.metrics.emit(pixels, state)
-                    last_preview = now
-        except Exception as exc:
-            self.failure.emit(str(exc))
-        finally:
-            cap.release()
+        while self.running:
+            self.metrics.emit(0, "CONNECTING")
+            cap = cv2.VideoCapture()
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000)
+            if not cap.open(self.source, cv2.CAP_FFMPEG):
+                cap.release()
+                self.metrics.emit(0, "RECONNECTING")
+                for _ in range(10):
+                    if not self.running:
+                        break
+                    self.msleep(100)
+                continue
+
+            reconnect_delay = 1.0
+            bg = cv2.createBackgroundSubtractorMOG2(
+                history=180, varThreshold=38, detectShadows=True
+            )
+            mask, points, dims = None, None, None
+            consecutive, ready = 0, True
+            warmup_until = time.monotonic() + 3
+            last_preview = time.monotonic()
+            last_frame = time.monotonic()
+            degraded_until = 0.0
+            try:
+                while self.running:
+                    started = time.monotonic()
+                    ok, img = cap.read()
+                    read_delay = time.monotonic() - started
+                    if not ok:
+                        self.metrics.emit(0, "RECONNECTING")
+                        break
+                    now = time.monotonic()
+                    if read_delay > 0.5 or now-last_frame > 0.6:
+                        degraded_until = now + 4
+                    last_frame = now
+                    h,w = img.shape[:2]
+                    if dims != (w,h):
+                        dims = (w,h)
+                        points = (POLYGON * [w/REFERENCE[0],h/REFERENCE[1]]).round().astype(np.int32)
+                        mask = np.zeros((h,w),np.uint8)
+                        cv2.fillPoly(mask,[points],255)
+                    fg = bg.apply(cv2.cvtColor(img,cv2.COLOR_BGR2GRAY))
+                    fg = cv2.bitwise_and(fg,mask)
+                    _,fg = cv2.threshold(fg,250,255,cv2.THRESH_BINARY)
+                    fg = cv2.morphologyEx(fg,cv2.MORPH_OPEN,kernel)
+                    pixels = cv2.countNonZero(fg)
+                    moving = pixels >= self.threshold
+                    consecutive = consecutive+1 if moving else 0
+                    if not moving:
+                        ready = True
+                    # After an RTSP stall we don't trust a frame for triggering.
+                    warming = now < warmup_until or now < degraded_until
+                    state = "WARMUP" if now < warmup_until else (
+                        "STREAM DEGRADED" if now < degraded_until else (
+                            "MOTION" if moving else "READY"
+                        )
+                    )
+                    if ready and consecutive >= self.confirm and not warming:
+                        ts = datetime.now(timezone.utc)
+                        folder = CAPTURES / ts.strftime("%Y-%m-%d")
+                        folder.mkdir(parents=True, exist_ok=True)
+                        dest = folder / (ts.strftime("%Y%m%dT%H%M%S.%f")[:-3]+"Z.webp")
+                        if cv2.imwrite(str(dest),img,[cv2.IMWRITE_WEBP_QUALITY,85]):
+                            self.captured.emit(str(dest))
+                            ready = False
+                    if now-last_preview > 1/15:
+                        view=img.copy()
+                        cv2.polylines(view,[points],True,(0,208,255),2,cv2.LINE_AA)
+                        self.frame.emit(view)
+                        self.metrics.emit(pixels,state)
+                        last_preview=now
+            except Exception as exc:
+                self.failure.emit(f"Lecture RTSP interrompue : {exc}. Reconnexion automatique.")
+            finally:
+                cap.release()
+            if self.running:
+                self.metrics.emit(0, "RECONNECTING")
+                for _ in range(10):
+                    if not self.running:
+                        break
+                    self.msleep(100)
 
 
 class Monitor(QMainWindow):
@@ -270,7 +299,8 @@ class Monitor(QMainWindow):
 
     def worker_failed(self, message):
         self.status.setText("●  ERROR")
-        QMessageBox.warning(self,"Problème de capture",message)
+        print(message, file=sys.stderr, flush=True)
+        self.status.setToolTip(message)
 
     def show_frame(self, frame):
         self.current_frame=frame
@@ -283,7 +313,7 @@ class Monitor(QMainWindow):
 
     def show_metrics(self,pixels,state):
         self.motion.setText(f"{pixels:,} px".replace(","," "))
-        color={"READY":"#55d9ab","MOTION":"#ffd166","WARMUP":"#93a7ba"}.get(state,"#9dd3ff")
+        color={"READY":"#55d9ab","MOTION":"#ffd166","WARMUP":"#93a7ba","CONNECTING":"#93a7ba","RECONNECTING":"#ff8c75","STREAM DEGRADED":"#ff8c75"}.get(state,"#9dd3ff")
         self.status.setStyleSheet(f"color:{color};font-size:16px;font-weight:700")
         self.status.setText("●  "+state)
 
