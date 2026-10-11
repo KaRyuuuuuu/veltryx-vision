@@ -28,6 +28,7 @@ def main():
     cap = cv2.VideoCapture(args.source, cv2.CAP_FFMPEG)
     if not cap.isOpened():
         raise RuntimeError("RTSP stream unavailable. Check SSH tunnel on :8554")
+    frame_out = os.fdopen(3, "wb", buffering=0)
     last_boxes = []
     n = 0
     last_emit = 0.0
@@ -77,11 +78,12 @@ def main():
             if not ok:
                 continue
             payload = encoded.tobytes()
-            sys.stdout.buffer.write(struct.pack("!I",len(payload)))
+            frame_out.write(struct.pack("!I",len(payload)))
             sys.stdout.buffer.write(payload)
-            sys.stdout.buffer.flush()
+            frame_out.flush()
     finally:
         cap.release()
+        frame_out.close()
 
 
 if __name__ == "__main__":
