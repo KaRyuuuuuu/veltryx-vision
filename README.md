@@ -89,3 +89,31 @@ Tester d'abord http://localhost:8889/cam seul : si WebRTC ne joue pas, vérifier
 Le détecteur tourne séparément en Python, une image sur 6 par défaut (environ 10 inférences/s si le PC suit), OCR par véhicule détecté; les numéros sont *candidats*, avec faux positifs possibles. Les événements sont affichés à côté de la vidéo, **pas dessinés dessus**, car la synchronisation exacte vidéo/inférence n'existe pas encore. Ne pas ouvrir plusieurs pages en simultané : chacune lance un worker.
 
 **Important — sortie complète :** l'ancien flux `/h264` annoncé à 960×480 ne peut pas être transformé en vraie sortie 1920×1080 depuis le backend. Il faut sélectionner/configurer un profil caméra qui expose toute la surface capteur à la résolution souhaitée. Ne pas modifier les réglages de la caméra en production sans accord. L'application conserve tous les pixels fournis par la source.
+
+## Captures locales des voitures (SQLite + WebP)
+
+Le worker `vision/events.py` enregistre automatiquement **une image par ID ByteTrack et par session de lancement**, dès qu'un numéro OCR candidat est disponible, ou après un délai d'environ 1,5 s sans numéro. La capture est enregistrée **en asynchrone** (file d'attente limitée) pour ne pas bloquer la détection.
+
+Les fichiers sont créés sous `local-data/` à la racine du dépôt, **ignoré par Git** :
+
+```text
+local-data/
+├── detections.sqlite3
+└── captures/
+    ├── car-230/
+    │   └── 20261011T093025.123Z-abcdefgh-12.webp
+    └── car-unknown-15/
+        └── 20261011T093027.456Z-abcdefgh-15.webp
+```
+
+Les images contiennent **la trame complète reçue** (pas seulement le crop), afin de conserver le contexte du véhicule. La base stocke `session_id`, `track_id`, `captured_utc_ms`, le numéro candidat, la confiance OCR, le chemin relatif et la bounding box. Le nom de dossier `car-230` reflète une **lecture OCR non vérifiée**, pas une identification officielle.
+
+Pour inspecter :
+
+```bash
+sudo pacman -S --needed sqlite
+sqlite3 local-data/detections.sqlite3 'SELECT captured_utc_ms,number_candidate,image_path FROM captures ORDER BY id DESC LIMIT 20;'
+```
+
+Désactiver la persistance lors d'un lancement manuel de `events.py` : `--no-snapshots`. Déplacer les données : `--capture-dir /chemin/local`. Le backend Go utilise le chemin par défaut. Attention : **chaque connexion navigateur `/api/detections` lance actuellement un worker distinct** ; les snapshots sont dédoublonnés *par worker*, pas entre workers. Éviter les multiples onglets. Les captures ne sont pas limitées en volume total et doivent être purgées manuellement lors des tests prolongés.
+
