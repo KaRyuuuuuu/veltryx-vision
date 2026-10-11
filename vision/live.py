@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Local-only MJPEG frames with YOLO bounding boxes and tentative OCR labels.
-Stdout protocol: 4-byte network-endian JPEG length followed by JPEG bytes.
+FD 3 protocol: 4-byte network-endian JPEG length followed by JPEG bytes.
 Each browser viewer starts its own worker; intended for ONE development viewer.
 """
 import argparse
@@ -79,7 +79,7 @@ def main():
                 continue
             payload = encoded.tobytes()
             frame_out.write(struct.pack("!I",len(payload)))
-            sys.stdout.buffer.write(payload)
+            frame_out.write(payload)
             frame_out.flush()
     finally:
         cap.release()
