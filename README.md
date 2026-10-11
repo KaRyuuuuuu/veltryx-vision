@@ -27,7 +27,7 @@ Attention : au premier lancement YOLO télécharge un modèle pré-entraîné et
 Terminal 1 :
 ```bash
 cd backend
-VISION_PYTHON="$(realpath ../.venv/bin/python)" go run .
+VISION_PYTHON="$PWD/../.venv/bin/python" go run .
 ```
 Terminal 2 :
 ```bash
@@ -52,7 +52,7 @@ OCR sur les voitures entières, faux positifs possibles. Pas de suivi multi-imag
 Le navigateur affiche un MJPEG généré localement avec rectangles YOLO et OCR candidat. La caméra **n'est pas modifiée**. L'aperçu fonctionne par snapshots annotés (~6 FPS maximum), pas à 60 FPS, et peut subir une latence importante sur CPU.
 
 1. Depuis Dragonfly, démarre un tunnel SSH RTSP : `ssh -N -L 8554:192.168.101.90:554 karyuu@192.168.103.49` (utilise l'adresse SSH joignable de ris-server-1).
-2. Démarre le backend Go avec `VISION_PYTHON="$(realpath ../.venv/bin/python)" go run .` depuis `backend/`.
+2. Démarre le backend Go avec `VISION_PYTHON="$PWD/../.venv/bin/python" go run .` depuis `backend/`.
 3. Démarre Next.js depuis `web/` avec `npm run dev`, puis clique sur **Démarrer le direct** sur http://localhost:3000.
 
 La source RTSP est volontairement figée sur `rtsp://127.0.0.1:8554/h264` par défaut. Option de lancement du backend : `VISION_LIVE_SOURCE=rtsp://127.0.0.1:8554/h264`. Seules les sources loopback sont acceptées pour éviter de scanner le réseau de production. **Une seule fenêtre de visualisation recommandée** : chaque connexion démarre son propre processus d'inférence. Pour quitter, clique sur « Arrêter le direct ». Ce prototype n'est pas un outil de chronométrage officiel.
@@ -63,7 +63,7 @@ La source RTSP est volontairement figée sur `rtsp://127.0.0.1:8554/h264` par d�
 
 1. Tunnel déjà utilisé : `ssh -N -L 8554:192.168.101.90:554 karyuu@192.168.103.49` (adapter l'hôte SSH s'il n'est pas joignable).
 2. À la racine du dépôt : `docker compose -f docker-compose.live.yml up -d` pour MediaMTX local (Docker doit être installé et démarré).
-3. `cd backend && VISION_PYTHON="$(realpath ../.venv/bin/python)" go run .`
+3. `cd backend && VISION_PYTHON="$PWD/../.venv/bin/python" go run .`
 4. `cd web && npm run dev`; ouvrir http://localhost:3000 et démarrer le direct.
 
 Tester d'abord http://localhost:8889/cam seul : si WebRTC ne joue pas, vérifier les ports locaux 8889/TCP et 8189/UDP et les logs `docker compose -f docker-compose.live.yml logs`. Le flux source doit rester joignable via le tunnel SSH. La vidéo H.264 n'est ni redimensionnée ni recompressée par MediaMTX. Les FPS effectivement reçus dépendent des réglages caméra, du navigateur et du réseau.
