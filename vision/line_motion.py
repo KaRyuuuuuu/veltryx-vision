@@ -67,13 +67,14 @@ def main():
     parser.add_argument("--min-pixels", type=int, default=900,
                         help="minimum foreground pixels inside ROI")
     parser.add_argument("--consecutive", type=int, default=2)
-    parser.add_argument("--cooldown", type=float, default=2.0)
+    parser.add_argument("--rearm-frames", type=int, default=1, help="quiet frames required to rearm")
+    parser.add_argument("--cooldown", type=float, default=0.0)
     parser.add_argument("--warmup", type=float, default=3.0)
     parser.add_argument("--preview", action="store_true", help="show ROI and foreground pixels in window")
     parser.add_argument("--limit", type=int, default=0, help="stop after this many images (0=unlimited)")
     args = parser.parse_args()
 
-    if args.min_pixels < 1 or args.consecutive < 1 or args.cooldown < 0:
+    if args.min_pixels < 1 or args.consecutive < 1 or args.rearm_frames < 1 or args.cooldown < 0:
         parser.error("invalid thresholds")
     try:
         polygon = [tuple(map(int, item.split(","))) for item in args.polygon.split(";")]
@@ -91,6 +92,7 @@ def main():
     start = time.monotonic()
     last_saved = 0.0
     consecutive = 0
+    quiet_frames = 0
     ready = True
     saved = 0
     recent = deque(maxlen=4)
@@ -128,7 +130,8 @@ def main():
             consecutive = consecutive + 1 if moving else 0
 
             # One capture per transition into the ROI; avoid duplicates while occupied.
-            if not moving:
+            quiet_frames = 0 if moving else quiet_frames + 1
+            if quiet_frames >= args.rearm_frames:
                 ready = True
             if not warming_up and ready and consecutive >= args.consecutive and now - last_saved >= args.cooldown:
                 stamp = datetime.now(timezone.utc)
