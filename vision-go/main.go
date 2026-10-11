@@ -10,7 +10,6 @@ import (
  "flag"
  "fmt"
  "image"
- "image/color"
  "image/jpeg"
  "io"
  "log"
@@ -19,10 +18,8 @@ import (
  "os"
  "os/exec"
  "path/filepath"
- "strconv"
  "strings"
  "sync"
- "sync/atomic"
  "time"
 )
 
@@ -55,9 +52,7 @@ type Server struct {
  jobs chan Snapshot
  dir string
  width,height,threshold,confirm int
- bytesPerFrame int
  source string
- running atomic.Bool
 }
 
 func (s *Server) setState(state string) {
@@ -90,8 +85,7 @@ func (s *Server) save(ctx context.Context) {
    s.metrics.Captures++
    s.mu.Unlock()
    f,err:=os.OpenFile(filepath.Join(s.dir,"events.jsonl"),os.O_CREATE|os.O_WRONLY|os.O_APPEND,0644)
-   if err==nil {b,_:=json.Marshal(ev);_,_=f.Write(append(b,'
-'));_ = f.Close()}
+   if err==nil {b,_:=json.Marshal(ev);_,_=f.Write(append(b, byte(10)));_ = f.Close()}
   }
  }
 }
@@ -241,6 +235,5 @@ func main(){
  })
  server:=&http.Server{Addr:addr,Handler:mux,ReadHeaderTimeout:5*time.Second}
  log.Printf("Veltryx Go Line Monitor on http://%s; RTSP %s; output %s",addr,source,absolute)
- _=strconv.Itoa // keep explicit import for stable gofmt later
  log.Fatal(server.ListenAndServe())
 }
