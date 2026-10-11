@@ -47,6 +47,24 @@ Aucune charge de décodage ou d'IA n'est lancée sur ris-server-1.
 ## Limites de la V1
 OCR sur les voitures entières, faux positifs possibles. Pas de suivi multi-image, pas d'horodatage synchronisé à la ligne, pas de connexion à ris-core. Les événements sont uniquement des **candidats OCR** à valider manuellement; jamais des chronos officiels.
 
+## Tunnel RTSP Basler (Dragonfly)
+
+Depuis la racine du dépôt :
+
+```bash
+bash scripts/camera-tunnel.sh
+```
+
+Le script ouvre uniquement la redirection SSH locale `127.0.0.1:8554 -> 192.168.101.90:554` via `karyuu@192.168.103.49`. Il reste au premier plan : `Ctrl+C` ferme le tunnel. Laisser ce terminal ouvert pendant l'affichage de la caméra.
+
+Si l'adresse de ris-server-1 est différente ou inaccessible depuis Dragonfly :
+
+```bash
+bash scripts/camera-tunnel.sh karyuu@ADRESSE_SSH_JOIGNABLE
+```
+
+Variables facultatives : `VISION_CAMERA_IP`, `VISION_RTSP_PORT`, `VISION_CAMERA_RTSP_PORT` et `VISION_SSH_TARGET`. Aucun service ni pare-feu n'est modifié sur le serveur de production.
+
 ## Aperçu RTSP temps réel (Dragonfly uniquement)
 
 Le navigateur affiche un MJPEG généré localement avec rectangles YOLO et OCR candidat. La caméra **n'est pas modifiée**. L'aperçu fonctionne par snapshots annotés (~6 FPS maximum), pas à 60 FPS, et peut subir une latence importante sur CPU.
