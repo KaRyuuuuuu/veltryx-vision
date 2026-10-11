@@ -16,6 +16,7 @@ import cv2
 import pytesseract
 import torch
 from ultralytics import YOLO
+from capture_store import CaptureStore
 
 VEHICLES = {"car", "truck", "bus", "motorcycle"}
 
@@ -146,6 +147,8 @@ def main():
     p.add_argument("--every", type=int, default=1, help="analyze every Nth captured frame (default: 1)")
     p.add_argument("--ocr-interval", type=float, default=0.7)
     p.add_argument("--imgsz", type=int, default=640)
+    p.add_argument("--capture-dir", default=os.path.join(os.path.dirname(__file__), "..", "local-data"))
+    p.add_argument("--no-snapshots", action="store_true")
     args = p.parse_args()
     gpu = torch.cuda.is_available()
     device = 0 if gpu else "cpu"
@@ -153,6 +156,7 @@ def main():
     model = YOLO("yolo11n.pt")
     capture = LatestFrame(args.source)
     ocr = AsyncOCR()
+    store = None if args.no_snapshots else CaptureStore(args.capture_dir)
     prev = 0
     analyzed = 0
     skipped = 0
@@ -173,6 +177,7 @@ def main():
                 tracker="bytetrack.yaml", verbose=False,
             )[0]
             boxes = []
+            utc_ms = int(time.time() * 1000)
             for b in result.boxes:
                 if model.names[int(b.cls[0])] not in VEHICLES:
                     continue
@@ -186,6 +191,11 @@ def main():
                     if crop.size:
                         ocr.submit(track_id, crop, args.ocr_interval)
                     candidate = ocr.lookup(track_id)
+                if store is not None and track_id is not None:
+                    store.observe(track_id, frame, xyxy,
+                                  candidate[0] if candidate else None,
+                                  round(candidate[1] / 100, 3) if candidate else None,
+                                  utc_ms)
                 boxes.append({
                     "box": xyxy, "track_id": track_id,
                     "confidence": round(float(b.conf[0]), 3),
