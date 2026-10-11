@@ -40,7 +40,7 @@ def main():
             n += 1
             if n % 5 == 1:
                 last_boxes = []
-                prediction = model.predict(image, imgsz=640, conf=0.35, device=device, half=gpu, verbose=False)[0]
+                prediction = model.predict(image, imgsz=640, conf=0.35, device=device, verbose=False)[0]
                 for b in prediction.boxes:
                     cls = int(b.cls[0])
                     if model.names[cls] not in ("car", "truck", "bus", "motorcycle"):
