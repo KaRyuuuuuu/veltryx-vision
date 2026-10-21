@@ -1,217 +1,93 @@
-# Veltryx Vision
+# Veltryx Vision V2
 
-Prototype de reconnaissance de numéros de voitures, développé sur **Dragonfly**. **Ne pas déployer sur ris-server-1** avant validation.
+Gestion multi-caméras GigE Vision pour les opérations de chronométrage automobile. Un processus Go acquiert les images originales, détecte les passages et produit les captures et la vidéo. Next.js fournit le dashboard. Ni FFmpeg, ni GStreamer, ni Node.js ne participent au pipeline vidéo Go.
 
-## Architecture
-- `backend/` : API Go, stockage local des jobs et lancement du worker.
-- `vision/` : YOLO (détection véhicule) + Tesseract (OCR numérique), exécuté dans un processus Python isolé.
-- `web/` : interface Next.js.
+## Démarrage sous Arch Linux
 
-## Prérequis (Arch)
-```bash
-sudo pacman -S --needed go nodejs npm python python-pip ffmpeg tesseract tesseract-data-eng
-```
-
-## Installation
-```bash
-git clone git@github.com:KaRyuuuuuu/veltryx-vision.git
-cd veltryx-vision
-python -m venv .venv
-.venv/bin/python -m pip install -r vision/requirements.txt
-.venv/bin/python -c 'import cv2, ultralytics, pytesseract; print("Vision dependencies OK")'
-cd web && npm install && cd ..
-```
-Attention : au premier lancement YOLO télécharge un modèle pré-entraîné et peut consommer plusieurs centaines de Mo. Le modèle général détecte les voitures **mais pas spécifiquement les plaques de numéro de course** : l'OCR est expérimental et nécessitera des images annotées pour devenir fiable.
-
-## Démarrage en développement
-Terminal 1 :
-```bash
-cd backend
-VISION_PYTHON="$PWD/../.venv/bin/python" go run .
-```
-Terminal 2 :
-```bash
-cd web
-npm run dev
-```
-Ouvrir http://localhost:3000 et sélectionner un fichier vidéo **déjà présent sur Dragonfly** avec son chemin absolu. Le serveur Next.js communique avec l'API Go via des requêtes locales; l'API accepte uniquement les fichiers sous `VISION_MEDIA_ROOT` (par défaut `~/Videos`).
-
-### Enregistrer un clip de test depuis la caméra
-Ouvrir au préalable le tunnel SSH RTSP habituel **sur Dragonfly** puis :
-```bash
-mkdir -p ~/Videos/veltryx-vision
-ffmpeg -rtsp_transport tcp -i rtsp://127.0.0.1:8554/h264 -t 15 -c:v copy ~/Videos/veltryx-vision/basler.mkv
-```
-Aucune charge de décodage ou d'IA n'est lancée sur ris-server-1.
-
-## Limites de la V1
-OCR sur les voitures entières, faux positifs possibles. Pas de suivi multi-image, pas d'horodatage synchronisé à la ligne, pas de connexion à ris-core. Les événements sont uniquement des **candidats OCR** à valider manuellement; jamais des chronos officiels.
-
-## Tunnel RTSP Basler (Dragonfly)
-
-Depuis la racine du dépôt :
+Prérequis : Go 1.25+, Node.js 20.9+ pour Next.js, `pkg-config`, compilateur C. L’intégration native de cette version cible **Aravis 0.10** et x264.
 
 ```bash
-bash scripts/camera-tunnel.sh
+sudo pacman -S --needed go nodejs npm base-devel pkgconf aravis x264
+pkg-config --modversion aravis-0.10 x264
+go mod download
+npm ci --prefix apps/web
 ```
 
-Le script ouvre uniquement la redirection SSH locale `127.0.0.1:8554 -> 192.168.101.90:554` via `karyuu@192.168.103.49`. Il reste au premier plan : `Ctrl+C` ferme le tunnel. Laisser ce terminal ouvert pendant l'affichage de la caméra.
+Si la distribution fournit Aravis 0.8, mettre Aravis à niveau vers 0.10 avant de compiler l’option `aravis` ; les signatures C diffèrent. Le mode simulation et l’encodage x264 peuvent être utilisés indépendamment d’Aravis.
 
-Si l'adresse de ris-server-1 est différente ou inaccessible depuis Dragonfly :
+Deux terminaux, sans caméra :
 
 ```bash
-bash scripts/camera-tunnel.sh karyuu@ADRESSE_SSH_JOIGNABLE
+go run -tags x264 ./apps/backend -simulate 2
+npm run dev --prefix apps/web
 ```
 
-Variables facultatives : `VISION_CAMERA_IP`, `VISION_RTSP_PORT`, `VISION_CAMERA_RTSP_PORT` et `VISION_SSH_TARGET`. Aucun service ni pare-feu n'est modifié sur le serveur de production.
-
-## Aperçu RTSP temps réel (Dragonfly uniquement)
-
-Le navigateur affiche un MJPEG généré localement avec rectangles YOLO et OCR candidat. La caméra **n'est pas modifiée**. L'aperçu fonctionne par snapshots annotés (~6 FPS maximum), pas à 60 FPS, et peut subir une latence importante sur CPU.
-
-1. Depuis Dragonfly, démarre un tunnel SSH RTSP : `ssh -N -L 8554:192.168.101.90:554 karyuu@192.168.103.49` (utilise l'adresse SSH joignable de ris-server-1).
-2. Démarre le backend Go avec `VISION_PYTHON="$PWD/../.venv/bin/python" go run .` depuis `backend/`.
-3. Démarre Next.js depuis `web/` avec `npm run dev`, puis clique sur **Démarrer le direct** sur http://localhost:3000.
-
-La source RTSP est volontairement figée sur `rtsp://127.0.0.1:8554/h264` par défaut. Option de lancement du backend : `VISION_LIVE_SOURCE=rtsp://127.0.0.1:8554/h264`. Seules les sources loopback sont acceptées pour éviter de scanner le réseau de production. **Une seule fenêtre de visualisation recommandée** : chaque connexion démarre son propre processus d'inférence. Pour quitter, clique sur « Arrêter le direct ». Ce prototype n'est pas un outil de chronométrage officiel.
-
-## Affichage WebRTC fluide + OCR séparé (nouveau)
-
-**Sur Dragonfly uniquement.** Le backend n'effectue aucune acquisition sur ris-server-1; ce serveur relaie seulement le RTSP via SSH. Ce prototype n'est pas synchronisé au temps de passage.
-
-1. Tunnel déjà utilisé : `ssh -N -L 8554:192.168.101.90:554 karyuu@192.168.103.49` (adapter l'hôte SSH s'il n'est pas joignable).
-2. À la racine du dépôt : `docker compose -f docker-compose.live.yml up -d` pour MediaMTX local (Docker doit être installé et démarré).
-3. `cd backend && VISION_PYTHON="$PWD/../.venv/bin/python" go run .`
-4. `cd web && npm run dev`; ouvrir http://localhost:3000 et démarrer le direct.
-
-Tester d'abord http://localhost:8889/cam seul : si WebRTC ne joue pas, vérifier les ports locaux 8889/TCP et 8189/UDP et les logs `docker compose -f docker-compose.live.yml logs`. Le flux source doit rester joignable via le tunnel SSH. La vidéo H.264 n'est ni redimensionnée ni recompressée par MediaMTX. Les FPS effectivement reçus dépendent des réglages caméra, du navigateur et du réseau.
-
-Le détecteur tourne séparément en Python, une image sur 6 par défaut (environ 10 inférences/s si le PC suit), OCR par véhicule détecté; les numéros sont *candidats*, avec faux positifs possibles. Les événements sont affichés à côté de la vidéo, **pas dessinés dessus**, car la synchronisation exacte vidéo/inférence n'existe pas encore. Ne pas ouvrir plusieurs pages en simultané : chacune lance un worker.
-
-**Important — sortie complète :** l'ancien flux `/h264` annoncé à 960×480 ne peut pas être transformé en vraie sortie 1920×1080 depuis le backend. Il faut sélectionner/configurer un profil caméra qui expose toute la surface capteur à la résolution souhaitée. Ne pas modifier les réglages de la caméra en production sans accord. L'application conserve tous les pixels fournis par la source.
-
-## Captures locales des voitures (SQLite + WebP)
-
-Le worker `vision/events.py` enregistre automatiquement **une image par ID ByteTrack et par session de lancement**, dès qu'un numéro OCR candidat est disponible, ou après un délai d'environ 1,5 s sans numéro. La capture est enregistrée **en asynchrone** (file d'attente limitée) pour ne pas bloquer la détection.
-
-Les fichiers sont créés sous `local-data/` à la racine du dépôt, **ignoré par Git** :
-
-```text
-local-data/
-├── detections.sqlite3
-└── captures/
-    ├── car-230/
-    │   └── 20261011T093025.123Z-abcdefgh-12.webp
-    └── car-unknown-15/
-        └── 20261011T093027.456Z-abcdefgh-15.webp
-```
-
-Les images contiennent **la trame complète reçue** (pas seulement le crop), afin de conserver le contexte du véhicule. La base stocke `session_id`, `track_id`, `captured_utc_ms`, le numéro candidat, la confiance OCR, le chemin relatif et la bounding box. Le nom de dossier `car-230` reflète une **lecture OCR non vérifiée**, pas une identification officielle.
-
-Pour inspecter :
+Ouvrir <http://127.0.0.1:3000>. Cliquer sur **Voir en direct** pour établir WebRTC. Les aperçus JPEG à 1 FPS permettent aussi de travailler sans encodeur natif :
 
 ```bash
-sudo pacman -S --needed sqlite
-sqlite3 local-data/detections.sqlite3 'SELECT captured_utc_ms,number_candidate,image_path FROM captures ORDER BY id DESC LIMIT 20;'
+CGO_ENABLED=0 go run ./apps/backend -simulate 2
 ```
 
-Désactiver la persistance lors d'un lancement manuel de `events.py` : `--no-snapshots`. Déplacer les données : `--capture-dir /chemin/local`. Le backend Go utilise le chemin par défaut. Attention : **chaque connexion navigateur `/api/detections` lance actuellement un worker distinct** ; les snapshots sont dédoublonnés *par worker*, pas entre workers. Éviter les multiples onglets. Les captures ne sont pas limitées en volume total et doivent être purgées manuellement lors des tests prolongés.
+Dans ce dernier mode, l’API WebRTC retourne explicitement une erreur 503. Elle ne remplace jamais silencieusement la vidéo H.264 par une simulation.
 
+Pour lancer les deux serveurs ensemble en mode matériel (site sur le port **3000**, API sur **8080**) :
 
+```bash
+./scripts/dev-real.sh
+```
 
-## Capture sur mouvement à la ligne (sans IA ni OCR)
+Cette commande compile Aravis/x264 et ne passe jamais `-simulate`. `Ctrl+C` arrête les deux serveurs. Les ports doivent être libres.
 
-Mode autonome léger \`vision/line_motion.py\` : surveille une zone polygonale entourant le damier blanc de la ligne de chronométrage et sauvegarde **l'image entière** lorsqu'un mouvement apparaît. Aucun modèle YOLO, OCR ou CUDA n'est chargé. Il s'agit d'un **déclencheur de mouvement expérimental**, pas d'un vrai capteur de franchissement ni d'une preuve qu'une voiture traverse la ligne.
+Avec les caméras réelles, sur le réseau GigE Vision :
 
-Sur **Dragonfly**, avec le tunnel SSH déjà ouvert :
+```bash
+go run -tags 'aravis x264' ./apps/backend
+```
 
-\`\`\`bash
-cd ~/Projects/veltryx-vision
-.venv/bin/python vision/line_motion.py --preview
-\`\`\`
+Aucune caméra, adresse IP ou référence de développement n’est codée en dur. La découverte utilise les annonces Aravis et identifie les caméras par numéro de série. Le réseau de la machine doit joindre directement le sous-réseau des caméras ; vérifier pare-feu et trafic UDP GigE Vision. L’acquisition démarre automatiquement pour les caméras accessibles. Le pilote sélectionne **Mono8** ; les formats disponibles sont exposés, mais les conversions Bayer, RGB et Mono10/12 restent à implémenter.
 
-La fenêtre \`--preview\` montre la zone jaune détectée. Ajuster si besoin les coordonnées du polygone, qui ont été estimées pour **la capture d'écran de référence 1649x928** et sont automatiquement mises à l'échelle de la résolution réelle du flux :
+## Compilation de production
 
-\`\`\`bash
-.venv/bin/python vision/line_motion.py --preview \
-  --polygon '215,485;355,485;575,905;345,905'
-\`\`\`
-
-Si trop de faux positifs : \`--min-pixels 1800 --consecutive 3\`. Si des véhicules rapides ne déclenchent pas, réduire à \`--min-pixels 450 --consecutive 1\`. \`--cooldown 2\` évite des images rapprochées. Attention : aucun algorithme sans IA ne garantit une capture *uniquement* des voitures ; ombres, personnes ou changements de lumière peuvent déclencher.
-
-Les fichiers sont créés automatiquement dans un dossier **ignoré par Git** :
-
-\`\`\`text
-local-data/line-crossings/2026-10-11/20261011T130422.573Z.webp
-\`\`\`
-
-Arrêt : \`Ctrl+C\` ou touche \`q\` en prévisualisation. Pour un test court : \`--limit 5\`. Ce script n'utilise **pas SQLite**, contrairement à \`events.py\` ; les fichiers sont horodatés en UTC. Le nom de fichier indique l'heure de sauvegarde sur Dragonfly, pas un temps de passage officiel, et ne garantit pas une synchronisation précise de capture. Démarrer uniquement ce script, sans les autres workers YOLO, pour limiter la chauffe.
-
-
-## Application desktop Line Monitor (Qt)
-
-Une interface de supervision Qt indépendante du backend Go et de YOLO est disponible :
-- caméra RTSP avec polygone de détection dessiné en surimpression ;
-- état READY / MOTION / WARMUP, compteur de pixels et nombre de captures ;
-- réglages seuil / confirmation avant démarrage ;
-- galerie des 200 dernières images WebP avec miniatures, sélection et vue agrandie ;
-- rafraîchissement automatique du dossier toutes les 1,5 secondes ;
-- bouton d'accès au dossier sur disque.
-
-Sur Dragonfly (depuis la racine du dépôt), installer PySide6 dans le même venv :
-\`\`\`bash
-.venv/bin/python -m pip install PySide6
-\`\`\`
-
-Démarrer le tunnel dans un terminal, puis l'application dans un second :
-\`\`\`bash
-bash scripts/camera-tunnel.sh
+```bash
+mkdir -p bin
+go build -tags 'aravis x264' -o bin/veltryx-vision ./apps/backend
+npm run build --prefix apps/web
+./bin/veltryx-vision -listen 127.0.0.1:8080 -preset veryfast -bitrate 2500
 # Dans un autre terminal :
-.venv/bin/python vision/line_monitor_gui.py
-\`\`\`
-
-Cliquer sur **Démarrer la surveillance**. L'interface fonctionne sans serveur Go, Next.js, GPU, YOLO ou OCR. Les captures sont stockées dans \`local-data/line-crossings/YYYY-MM-DD/\` et automatiquement ajoutées à la galerie. Le dossier \`local-data\` est ignoré par Git.
-
-Le mode OpenCV \`vision/line_motion.py --preview\` reste disponible comme alternative légère. L'interface Qt ne doit pas être utilisée en parallèle avec lui sur la même caméra pour éviter une connexion RTSP supplémentaire. **Aucun cooldown fixe** : une nouvelle capture est possible après une image calme. Cela ne garantit toutefois pas un déclenchement distinct si deux voitures se suivent sans libérer la zone. Les horodatages sont ceux de sauvegarde, pas des temps de passage homologués.
-
-
-## V2 indépendante en Go + site Node/Next.js
-
-**Prototype expérimental pour Dragonfly, non testé sur la caméra réelle.** L'ancienne application Python reste intacte.
-
-`vision-go/` exécute un seul décodeur FFmpeg RTSP et un détecteur de mouvement léger sans YOLO/OCR/CUDA. Chaque déclenchement envoie une image brute à une **file d'écriture bornée** (24 éléments) ; le WebP est encodé dans une goroutine séparée. Le moteur se reconnecte en cas de déconnexion, réinitialise son état après reconnexion et expose son état en HTTP sur `127.0.0.1:8098`.
-
-Le site **Node/Next.js** sur `http://localhost:3000/line` affiche l'aperçu, les métriques et la galerie auto-actualisée, via un proxy Next.js côté serveur. Il **ne démarre aucun nouveau worker RTSP** lorsqu'on ouvre la page.
-
-### Lancement sur Arch / Dragonfly
-
-```bash
-# Terminal 1 : redirection Basler
-cd ~/Projects/veltryx-vision
-bash scripts/camera-tunnel.sh
-
-# Terminal 2 : moteur Go (aucun Python requis)
-cd ~/Projects/veltryx-vision/vision-go
-go run . -fps 30 -threshold 170 -confirm 2
-
-# Terminal 3 : site Node
-cd ~/Projects/veltryx-vision/web
-npm install
-npm run dev
+npm run start --prefix apps/web
 ```
 
-Ouvrir `http://localhost:3000/line`. La caméra est sondée automatiquement par FFprobe pour trouver sa résolution ; le tunnel SSH doit donc être ouvert avant le lancement de Go. `ffmpeg` et `ffprobe` sont requis. Lancer **sans les scripts de détection Python** pour éviter les connexions RTSP en double et la surcharge de Dragonfly.
+`-preset` accepte ultrafast, superfast, veryfast, faster, fast, medium et slow. Le tune est `zerolatency`, distinct du preset. Le débit est exprimé en kbit/s par caméra. `-config` et `-screenshots` changent les chemins persistants. Le défaut est `local-data/config.json` et `local-data/screenshots/`. Le processus journalise en JSON et libère acquisitions, buffers C, encodeurs et connexions lors d’un SIGINT/SIGTERM.
 
-Les fichiers se trouvent dans `local-data/go-line-crossings/YYYY-MM-DD/*.webp` et le journal `local-data/go-line-crossings/events.jsonl`. Le répertoire est exclu de Git. **Cette V2 utilise JSONL pour l'index local, pas SQLite** ; une migration SQLite restera à faire si nécessaire.
+`BACKEND_URL=http://127.0.0.1:8080` règle la destination de la réécriture Next.js (à définir lors du build). La vidéo utilise une connexion WebRTC directe au backend ; le proxy HTTP transporte les offres SDP et le SSE. ICE utilise actuellement les interfaces locales, sans serveur STUN/TURN configurable : le déploiement livré vise un réseau local. Une exposition distante nécessite une configuration ICE, HTTPS, authentification et contrôle d’accès, non fournis ici. Le site écoute sur `0.0.0.0:3000`, accessible depuis les autres appareils via `http://<IP-locale-de-la-machine>:3000`. Le lanceur affiche les adresses locales au démarrage. Le backend HTTP reste sur `127.0.0.1:8080` ; son API et le SSE sont accessibles par le proxy du site.
 
-Commandes utiles : `go run . -fps 15` pour réduire la charge, `go run . -threshold 300 -confirm 2` pour tester un seuil plus strict, `go run . -help` pour tous les réglages.
+## Fonctionnement
 
-### Limites et sécurité
+- Découverte toutes les trois secondes ; déconnexions conservées dans la liste, acquisition sans images valides arrêtée après trois secondes, tentative de réouverture aux scans suivants. Un arrêt demandé par l’utilisateur reste respecté après reconnexion, jusqu’au redémarrage du processus.
+- Une acquisition et un Frame Hub par caméra. Images Gray8 immuables et détenues par Go, copiées avant restitution du buffer Aravis. Chaque consommateur dispose d’une file bornée qui abandonne l’image la plus ancienne.
+- Un encodeur CPU à la demande par caméra, partagé entre au maximum 16 clients WebRTC. L’encodage continue jusqu’à l’arrêt du flux, la reconfiguration ou la déconnexion. Un IDR est produit environ toutes les deux secondes.
+- ROI rectangulaires ou polygonales, normalisées ; écart de luminance, nombre minimum de pixels, confirmation, réarmement sur images calmes, cooldown et filtre des changements globaux. Les ROI invalides et auto-intersectées sont rejetées.
+- Prébuffer limité à 60 images et 64 Mio par caméra ; file d’écriture limitée à 64 tâches et 64 Mio. Les captures avant passage peuvent être moins nombreuses si le budget mémoire ou les images disponibles le limitent. Sous charge, les abandons sont explicites via les statistiques ou les événements `error` ; l’acquisition ne bloque pas sur les consommateurs.
+- Les nouvelles captures JPEG utilisent une qualité de 60/100 pour réduire le poids disque, à résolution originale. Le PNG reste sans perte. Les nouvelles captures sont aussi tournées avant encodage selon l’orientation choisie avec ↻ : 0°, 90°, 180° ou 270°. Cette préférence est persistée par caméra côté serveur et s’applique aux captures manuelles et automatiques. Les anciens fichiers sont conservés. Les timestamps des captures sont affichés avec trois chiffres de millisecondes sur le site.
+- Les JPEG/PNG conservent les métadonnées dans un fichier JSON associé : série, passage, zone, séquence, horodatage UTC de réception et timestamp matériel non interprété. Les images d’un passage partagent un identifiant. Le backend recharge cet historique au démarrage.
+- L’éditeur permet rectangles à deux coins, polygones à fermer, déplacement des poignées, Alt + clic pour ajouter un sommet et suppression du sommet sélectionné. Rotation 0/90/180/270° et redimensionnement conservent les coordonnées de l’image source. Le mode test affiche jusqu’à 2 048 pixels modifiés par ROI, à 10 Hz maximum. Il teste les ROI **enregistrées** côté Go.
+- OCR : moteur injectable, état désactivé explicite, agrégation pondérée de plusieurs lectures d’un même passage. Aucun modèle, aucune reconnaissance fictive. L’ordonnancement automatique d’un moteur sera à connecter lorsqu’un moteur sera choisi.
 
-- Les FPS affichés sont des cadences reçues, pas une garantie que chaque voiture est enregistrée.
-- Le déclenchement utilise une différence d'images dans une zone proche du damier ; plusieurs voitures accolées peuvent être fusionnées et des ombres peuvent provoquer des faux positifs.
-- L'horodatage est pris à la réception sur Dragonfly ; **ce n'est pas un chrono officiel**.
-- L'encodage WebP n'interrompt plus la boucle de capture, mais l'aperçu JPEG est encore encodé sur cette boucle à cadence réduite. Sous forte charge, la file d'écriture peut se saturer : surveiller le compteur `dropped_saves`.
-- En cas de stream H.264 corrompu, le moteur ne peut pas reconstruire les images manquantes. Tester la stabilité avant toute exploitation.
-- Le serveur Go n'écoute que sur le loopback ; l'accès depuis un autre PC via Next.js nécessite de sécuriser le site avec authentification et HTTPS. Ne pas l'exposer publiquement en l'état.
+## Vérifications
 
+```bash
+go test ./...
+go test -race ./...
+go test -race -tags 'aravis x264' ./...
+go vet -tags 'aravis x264' ./...
+npm run typecheck --prefix apps/web
+npm run build --prefix apps/web
+```
+
+Le test WebRTC natif ouvre de vraies sockets UDP locales et reçoit du H.264 avec deux pairs Pion, depuis des images synthétiques. Les tests couvrent aussi le buffer, les consommateurs lents, les ROI, les seuils et le réarmement, la persistance et l’API avec deux caméras simulées. La compilation CGO et ces tests ne valident **pas** une caméra physique ni le décodage dans un navigateur.
+
+À valider sur le matériel : découverte sur le bon NIC, `DeviceUserID`, plages GenICam réelles, contraintes d’incréments et d’exposition, stabilité des timestamps, débit GigE, pertes, débranchement/rebranchement, FPS à pleine résolution, latence et décodage H.264 dans les navigateurs ciblés. La métrique `latency_ms` mesure uniquement le retard côté Go depuis la réception horodatée ; elle ne mesure pas la latence caméra-écran. Les timestamps de caméras différentes ne sont pas synchronisés par PTP dans cette version.
+
+Il n’y a pas encore de politique de rétention disque ni de pagination par curseur : l’historique API est limité à 100 images par défaut (maximum 1 000), son index est chargé en mémoire. Prévoir la rétention avant un fonctionnement continu. Les captures automatiques suivent les images reçues par le worker ; une surcharge peut créer des trous. Les détections ne constituent pas un chronométrage officiel.
+
+Voir [architecture](docs/architecture.md) et [API](docs/api.md).
