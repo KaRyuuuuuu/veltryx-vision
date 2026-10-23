@@ -44,6 +44,9 @@ func (d *simDevice) Run(ctx context.Context, publish func(*frames.Frame)) error 
 	var seq uint64
 	for {
 		s := d.Info().Settings
+		if s.FPSUnlimited {
+			s.FPS = 60
+		}
 		timer := time.NewTimer(time.Duration(float64(time.Second) / s.FPS))
 		select {
 		case <-ctx.Done():

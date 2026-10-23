@@ -1,14 +1,14 @@
 import Head from "next/head";
 import { publishCameraRotation } from "../hooks/useCameraRotation";
-import { formatTimestamp } from "../services/time";
+import PassageTimeline from "../components/PassageTimeline";
 import { useCallback, useEffect, useState } from "react";
 import CameraGrid from "../components/CameraGrid";
 import CameraSettings from "../components/CameraSettings";
 import ROIEditor from "../components/ROIEditor";
-import { api, Camera, Event, Motion, Shot } from "../services/api";
+import { api, Camera, Event, Motion, Passage } from "../services/api";
 export default function Dashboard() {
   const [cameras, setCameras] = useState<Camera[]>([]);
-  const [shots, setShots] = useState<Shot[]>([]);
+  const [passages, setPassages] = useState<Passage[]>([]);
   const [editing, setEditing] = useState<Camera | null>(null);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
@@ -23,8 +23,8 @@ export default function Dashboard() {
       .catch((e) => setError(String(e)));
   }, []);
   const refreshShots = useCallback(() => {
-    void api<Shot[]>("/screenshots?limit=100")
-      .then(setShots)
+    void api<Passage[]>("/passages?limit=100")
+      .then(setPassages)
       .catch((e) => setError(String(e)));
   }, []);
   useEffect(() => {
@@ -70,12 +70,6 @@ export default function Dashboard() {
       clearInterval(timer);
     };
   }, [refresh, refreshShots]);
-  const passages = new Map<string, Shot[]>();
-  for (const s of shots) {
-    const group = passages.get(s.passage) || [];
-    group.push(s);
-    passages.set(s.passage, group);
-  }
   return (
     <>
       <Head>
@@ -164,47 +158,7 @@ export default function Dashboard() {
             </div>
           )
         ) : (
-          <div className="passages">
-            {[...passages].map(([id, group]) => (
-              <article className="passage" key={id}>
-                <div>
-                  <h2>{formatTimestamp(group[0].timestamp, true)}</h2>
-                  <p className="muted">
-                    {group[0].serial} · {group.length} image(s) ·{" "}
-                    {group[0].zone ? "Détection ROI" : "Capture manuelle"}
-                  </p>
-                  <code>{id}</code>
-                  <span className="ocr-state">OCR · moteur non configuré</span>
-                </div>
-                <div className="thumbnails">
-                  {group.map((s) => (
-                    <a
-                      key={s.id}
-                      href={`/api/v1/screenshots/${s.id}/image`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={formatTimestamp(s.timestamp, true)}
-                    >
-                      <img
-                        loading="lazy"
-                        src={`/api/v1/screenshots/${s.id}/image`}
-                        alt={`Capture ${s.serial} à ${formatTimestamp(s.timestamp, true)}`}
-                      />
-                      <time dateTime={s.timestamp}>
-                        {formatTimestamp(s.timestamp)}
-                      </time>
-                    </a>
-                  ))}
-                </div>
-              </article>
-            ))}
-            {!shots.length && (
-              <div className="empty">
-                Les captures manuelles et les passages détectés apparaîtront
-                ici.
-              </div>
-            )}
-          </div>
+          <PassageTimeline passages={passages} />
         )}
       </main>
       {editing && (

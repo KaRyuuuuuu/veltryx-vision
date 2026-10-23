@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -124,7 +125,7 @@ func (s *Store) save() error {
 	return os.Rename(f.Name(), s.path)
 }
 func ValidateSettings(v models.Settings) error {
-	if v.Width < 16 || v.Height < 16 || v.Width > 8192 || v.Height > 8192 || int64(v.Width)*int64(v.Height) > 16777216 || !(v.FPS >= 1 && v.FPS <= 240) || !(v.Exposure >= 1 && v.Exposure <= 1000000) || !(v.Gain >= 0 && v.Gain <= 100) {
+	if v.Width < 16 || v.Height < 16 || v.Width > 8192 || v.Height > 8192 || int64(v.Width)*int64(v.Height) > 16777216 || (math.IsNaN(v.FPS) || math.IsInf(v.FPS, 0) || (!v.FPSUnlimited && v.FPS <= 0)) || (math.IsNaN(v.Exposure) || math.IsInf(v.Exposure, 0) || (!v.AutoExposure && v.Exposure <= 0)) || (math.IsNaN(v.Gain) || math.IsInf(v.Gain, 0) || (!v.AutoGain && v.Gain < 0)) {
 		return errors.New("invalid camera settings")
 	}
 	return nil

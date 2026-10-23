@@ -91,3 +91,9 @@ Le test WebRTC natif ouvre de vraies sockets UDP locales et reçoit du H.264 ave
 Il n’y a pas encore de politique de rétention disque ni de pagination par curseur : l’historique API est limité à 100 images par défaut (maximum 1 000), son index est chargé en mémoire. Prévoir la rétention avant un fonctionnement continu. Les captures automatiques suivent les images reçues par le worker ; une surcharge peut créer des trous. Les détections ne constituent pas un chronométrage officiel.
 
 Voir [architecture](docs/architecture.md) et [API](docs/api.md).
+
+## Réglages automatiques
+
+Dans « ROI & réglages », activer « Exposition automatique », « Gain automatique » et « FPS libres » pour utiliser les automatismes matériels. Les réglages sont persistés par série. Le mode FPS libres désactive `AcquisitionFrameRateEnable` ; il ne force pas une cadence irréalisable. Le capteur, l’exposition, les limites internes d’auto-exposition et le réseau déterminent les FPS réellement mesurés. Aucun plafond arbitraire de 240 FPS n’est imposé aux réglages d’acquisition. Les fonctions non prises en charge sont désactivées dans le formulaire et rejetées explicitement par le pilote. Le simulateur cadence explicitement son mode FPS libres à 60 FPS ; ce n’est pas une mesure du matériel.
+
+L’historique propose une timeline horizontale avec une image représentative par passage, navigation par boutons ←/→, flèches du clavier, défilement tactile et bouton « Dernier passage ». Les nouvelles captures distinguent les rôles `pre`, `trigger`, `post` ; la timeline privilégie le déclenchement. Les archives sans ce rôle utilisent leur image centrale. Toutes les images originales du passage restent conservées.

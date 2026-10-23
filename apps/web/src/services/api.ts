@@ -1,5 +1,8 @@
 export type Point = { x: number; y: number };
 export type Settings = {
+  auto_exposure?: boolean;
+  auto_gain?: boolean;
+  fps_unlimited?: boolean;
   width: number;
   height: number;
   fps: number;
@@ -7,6 +10,11 @@ export type Settings = {
   gain: number;
 };
 export type Camera = {
+  capabilities?: {
+    auto_exposure?: boolean;
+    auto_gain?: boolean;
+    fps_unlimited?: boolean;
+  };
   serial: string;
   id: string;
   name: string;
@@ -33,6 +41,7 @@ export type Zone = {
   post_frames: number;
 };
 export type Shot = {
+  role?: "pre" | "trigger" | "post" | "manual";
   id: string;
   serial: string;
   passage: string;
@@ -117,4 +126,13 @@ export const motionStateLabel: Record<string, string> = {
   global_change: "Variation globale filtrée",
   rearming: "Attente de retour au calme",
   cooldown: "Cooldown en cours",
+};
+
+export type Passage = {
+  id: string;
+  serial: string;
+  zone?: string;
+  timestamp: string;
+  image_count: number;
+  representative: Shot;
 };

@@ -76,6 +76,10 @@ waitForImages:
 				}
 				seen[s.Sequence] = true
 			}
+			groups := m.Passages("source", 10)
+			if len(groups) != 1 || groups[0].Representative.Sequence != 2 || groups[0].Representative.Role != "trigger" {
+				t.Fatal("wrong representative frame", groups)
+			}
 			if !seen[1] || !seen[2] || !seen[3] {
 				t.Fatal(seen)
 			}

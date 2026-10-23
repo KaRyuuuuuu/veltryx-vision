@@ -10,6 +10,7 @@ import (
 type task struct {
 	frame         *frames.Frame
 	passage, zone string
+	role          string
 }
 
 // Queue keeps disk I/O outside acquisition and motion loops. Enqueue never blocks.
@@ -26,14 +27,18 @@ func NewQueue(m *Manager, report func(Capture, error)) *Queue {
 	go func() {
 		defer close(q.done)
 		for t := range q.tasks {
-			c, e := m.Save(t.frame, "jpeg", t.passage, t.zone)
+			c, e := m.Save(t.frame, "jpeg", t.passage, t.zone, t.role)
 			q.bytes.Add(-int64(len(t.frame.Pixels)))
 			report(c, e)
 		}
 	}()
 	return q
 }
-func (q *Queue) Enqueue(f *frames.Frame, passage, zone string) bool {
+func (q *Queue) Enqueue(f *frames.Frame, passage, zone string, role ...string) bool {
+	kind := ""
+	if len(role) > 0 {
+		kind = role[0]
+	}
 	n := int64(len(f.Pixels))
 	if q.bytes.Add(n) > 64*1024*1024 {
 		q.bytes.Add(-n)
@@ -41,7 +46,7 @@ func (q *Queue) Enqueue(f *frames.Frame, passage, zone string) bool {
 		return false
 	}
 	select {
-	case q.tasks <- task{f, passage, zone}:
+	case q.tasks <- task{f, passage, zone, kind}:
 		return true
 	default:
 		q.bytes.Add(-n)

@@ -74,6 +74,16 @@ func TestSimulatedAPI(t *testing.T) {
 	if w = request("GET", "/api/v1/screenshots/"+shot.ID+"/image", ""); w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" {
 		t.Fatal(w.Code)
 	}
+	if w = request("GET", "/api/v1/passages?serial=SIM-001&limit=1", ""); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var passages []screenshots.Passage
+	if e = json.Unmarshal(w.Body.Bytes(), &passages); e != nil || len(passages) != 1 || passages[0].Representative.ID != shot.ID {
+		t.Fatal(e, passages)
+	}
+	if w = request("GET", "/api/v1/passages?limit=0", ""); w.Code != 400 {
+		t.Fatal(w.Code)
+	}
 	if w = request("POST", "/api/v1/cameras/SIM-001/stream/stop", ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}

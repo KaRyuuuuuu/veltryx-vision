@@ -63,7 +63,7 @@ func (w *Worker) Run(ctx context.Context, hub *frames.Hub) {
 		}
 	})
 	defer queue.Close()
-	save := func(f *frames.Frame, id, zone string) { queue.Enqueue(f, id, zone) }
+	save := func(f *frames.Frame, id, zone, role string) { queue.Enqueue(f, id, zone, role) }
 
 	for {
 		select {
@@ -87,7 +87,7 @@ func (w *Worker) Run(ctx context.Context, hub *frames.Hub) {
 			w.mu.Unlock()
 			remaining := jobs[:0]
 			for _, j := range jobs {
-				save(f, j.id, j.zone)
+				save(f, j.id, j.zone, "post")
 				j.remaining--
 				if j.remaining > 0 {
 					remaining = append(remaining, j)
@@ -116,9 +116,9 @@ func (w *Worker) Run(ctx context.Context, hub *frames.Hub) {
 						start = 0
 					}
 					for _, p := range past[start:] {
-						save(p, id, d.Zone.ID)
+						save(p, id, d.Zone.ID, "pre")
 					}
-					save(f, id, d.Zone.ID)
+					save(f, id, d.Zone.ID, "trigger")
 					if d.Zone.PostFrames > 0 {
 						jobs = append(jobs, pending{id, d.Zone.ID, d.Zone.PostFrames})
 					}

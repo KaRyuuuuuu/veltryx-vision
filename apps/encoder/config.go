@@ -1,6 +1,9 @@
 package encoder
 
-import "errors"
+import (
+	"errors"
+	"math"
+)
 
 type Config struct {
 	Preset      string
@@ -19,7 +22,7 @@ func (c Config) Validate() error {
 			valid = true
 		}
 	}
-	if !valid || c.Tune != "zerolatency" || c.BitrateKbps < 64 || c.BitrateKbps > 100000 || c.FPS < 1 || c.FPS > 240 {
+	if !valid || c.Tune != "zerolatency" || c.BitrateKbps < 64 || c.BitrateKbps > 100000 || c.FPS < 1 || math.IsNaN(c.FPS) || math.IsInf(c.FPS, 0) || c.FPS > 1000000 {
 		return errors.New("invalid x264 configuration")
 	}
 	return nil

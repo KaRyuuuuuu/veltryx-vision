@@ -122,6 +122,12 @@ func (s *Server) offer(w http.ResponseWriter, r *http.Request) {
 	if rt.video == nil {
 		ec := s.encoder
 		ec.FPS = c.Info().Settings.FPS
+		if c.Info().Settings.FPSUnlimited {
+			ec.FPS = c.Stats().FPS
+			if ec.FPS < 1 {
+				ec.FPS = 25
+			}
+		}
 		video, e := stream.New(s.ctx, c.Hub, ec)
 		if e != nil {
 			s.mu.Unlock()
@@ -138,4 +144,17 @@ func (s *Server) offer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, answer)
+}
+
+func (s *Server) listPassages(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		v, e := strconv.Atoi(raw)
+		if e != nil || v < 1 || v > 200 {
+			fail(w, 400, "limit must be 1..200")
+			return
+		}
+		limit = v
+	}
+	writeJSON(w, 200, s.shots.Passages(r.URL.Query().Get("serial"), limit))
 }

@@ -15,6 +15,7 @@ import (
 )
 
 type Capture struct {
+	Role            string    `json:"role,omitempty"`
 	Rotation        int       `json:"rotation"`
 	Width           int       `json:"width,omitempty"`
 	Height          int       `json:"height,omitempty"`
@@ -69,7 +70,7 @@ func New(dir string) (*Manager, error) {
 	}
 	return m, nil
 }
-func (m *Manager) Save(f *frames.Frame, format, passage, zone string) (Capture, error) {
+func (m *Manager) Save(f *frames.Frame, format, passage, zone string, role ...string) (Capture, error) {
 	if !f.Valid() {
 		return Capture{}, errors.New("no valid frame available")
 	}
@@ -91,6 +92,11 @@ func (m *Manager) Save(f *frames.Frame, format, passage, zone string) (Capture, 
 		passage = ID()
 	}
 	c := Capture{Rotation: rotation, Width: image.Width, Height: image.Height, ID: ID(), Serial: f.Serial, Passage: passage, Zone: zone, Timestamp: f.Timestamp, DeviceTimestamp: f.DeviceTimestamp, Sequence: f.Sequence, Format: format}
+	if len(role) > 0 {
+		c.Role = role[0]
+	} else if zone == "" {
+		c.Role = "manual"
+	}
 	c.File = c.ID + "." + format
 	tmp, e := os.CreateTemp(m.dir, ".image-*")
 	if e != nil {

@@ -59,10 +59,11 @@ func (a *aravis) Discover(ctx context.Context) ([]models.Camera, error) {
 }
 
 type arvDevice struct {
-	mu      sync.Mutex
-	cam     *C.ArvCamera
-	info    models.Camera
-	running bool
+	mu       sync.Mutex
+	cam      *C.ArvCamera
+	info     models.Camera
+	lastRead time.Time
+	running  bool
 }
 
 func (a *aravis) Open(ctx context.Context, c models.Camera) (Device, error) {
@@ -128,9 +129,20 @@ func (d *arvDevice) readSettings() error {
 	}
 	e = nil
 	d.info.Settings.Gain = float64(C.arv_camera_get_gain(d.cam, &e))
-	return arvError(e)
+	if err := arvError(e); err != nil {
+		return err
+	}
+	return d.readAutomatic()
 }
-func (d *arvDevice) Info() models.Camera { d.mu.Lock(); defer d.mu.Unlock(); return d.info }
+func (d *arvDevice) Info() models.Camera {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.running && time.Since(d.lastRead) >= time.Second {
+		_ = d.readSettings()
+		d.lastRead = time.Now()
+	}
+	return d.info
+}
 func (d *arvDevice) Configure(s models.Settings) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -142,21 +154,11 @@ func (d *arvDevice) Configure(s models.Settings) error {
 	if err := arvError(e); err != nil {
 		return err
 	}
-	e = nil
-	C.arv_camera_set_frame_rate(d.cam, C.double(s.FPS), &e)
-	if err := arvError(e); err != nil {
+
+	if err := d.configureAutomatic(s); err != nil {
 		return err
 	}
-	e = nil
-	C.arv_camera_set_exposure_time(d.cam, C.double(s.Exposure), &e)
-	if err := arvError(e); err != nil {
-		return err
-	}
-	e = nil
-	C.arv_camera_set_gain(d.cam, C.double(s.Gain), &e)
-	if err := arvError(e); err != nil {
-		return err
-	}
+
 	if e := d.readSettings(); e != nil {
 		return e
 	}
@@ -309,6 +311,129 @@ func (d *arvDevice) readCapabilities() error {
 		return err
 	}
 	caps.Gain = models.Range{Min: float64(min), Max: float64(max)}
+	autoExposure, autoGain, freeFPS := d.autoCapabilities()
+	caps.AutoExposure = autoExposure
+	caps.AutoGain = autoGain
+	caps.FPSUnlimited = freeFPS
 	d.info.Capabilities = caps
+	return nil
+}
+
+func (d *arvDevice) autoCapabilities() (bool, bool, bool) {
+	var e *C.GError
+	exposure := C.arv_camera_is_exposure_auto_available(d.cam, &e) != 0
+	if e != nil {
+		_ = arvError(e)
+		exposure = false
+	}
+	e = nil
+	gain := C.arv_camera_is_gain_auto_available(d.cam, &e) != 0
+	if e != nil {
+		_ = arvError(e)
+		gain = false
+	}
+	e = nil
+	name := C.CString("AcquisitionFrameRateEnable")
+	defer C.free(unsafe.Pointer(name))
+	fps := C.arv_camera_is_feature_available(d.cam, name, &e) != 0
+	if e != nil {
+		_ = arvError(e)
+		fps = false
+	}
+	return exposure, gain, fps
+}
+func (d *arvDevice) readAutomatic() error {
+	exposure, gain, fps := d.autoCapabilities()
+	var e *C.GError
+	if exposure {
+		d.info.Settings.AutoExposure = C.arv_camera_get_exposure_time_auto(d.cam, &e) == C.ARV_AUTO_CONTINUOUS
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if gain {
+		d.info.Settings.AutoGain = C.arv_camera_get_gain_auto(d.cam, &e) == C.ARV_AUTO_CONTINUOUS
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if fps {
+		d.info.Settings.FPSUnlimited = C.arv_camera_get_frame_rate_enable(d.cam, &e) == 0
+		return arvError(e)
+	}
+	return nil
+}
+func (d *arvDevice) configureAutomatic(s models.Settings) error {
+	exposure, gain, fps := d.autoCapabilities()
+	if s.AutoExposure && !exposure {
+		return errors.New("camera does not support continuous automatic exposure")
+	}
+	if s.AutoGain && !gain {
+		return errors.New("camera does not support continuous automatic gain")
+	}
+	if s.FPSUnlimited && !fps {
+		return errors.New("camera does not support disabling its FPS limit")
+	}
+	var e *C.GError
+	// Turn automatic controls off before applying manual values or enabling continuous auto.
+	if exposure {
+		C.arv_camera_set_exposure_time_auto(d.cam, C.ARV_AUTO_OFF, &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if gain {
+		C.arv_camera_set_gain_auto(d.cam, C.ARV_AUTO_OFF, &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if fps {
+		enabled := C.gboolean(1)
+		if s.FPSUnlimited {
+			enabled = 0
+		}
+		C.arv_camera_set_frame_rate_enable(d.cam, enabled, &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if !s.FPSUnlimited {
+		C.arv_camera_set_frame_rate(d.cam, C.double(s.FPS), &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if !s.AutoExposure {
+		C.arv_camera_set_exposure_time(d.cam, C.double(s.Exposure), &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if !s.AutoGain {
+		C.arv_camera_set_gain(d.cam, C.double(s.Gain), &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if s.AutoExposure {
+		C.arv_camera_set_exposure_time_auto(d.cam, C.ARV_AUTO_CONTINUOUS, &e)
+		if err := arvError(e); err != nil {
+			return err
+		}
+		e = nil
+	}
+	if s.AutoGain {
+		C.arv_camera_set_gain_auto(d.cam, C.ARV_AUTO_CONTINUOUS, &e)
+		return arvError(e)
+	}
 	return nil
 }

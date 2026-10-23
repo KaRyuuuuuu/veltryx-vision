@@ -30,16 +30,47 @@ export default function CameraSettings({
       <h3>Acquisition</h3>
       {(
         [
+          [
+            "auto_exposure",
+            "Exposition automatique",
+            camera.capabilities?.auto_exposure,
+          ],
+          ["auto_gain", "Gain automatique", camera.capabilities?.auto_gain],
+          [
+            "fps_unlimited",
+            "FPS libres · maximum permis par la caméra",
+            camera.capabilities?.fps_unlimited,
+          ],
+        ] as const
+      ).map(([key, label, supported]) => (
+        <label key={key} className="auto-setting">
+          <input
+            type="checkbox"
+            checked={!!values[key]}
+            disabled={supported === false}
+            onChange={(e) => setValues({ ...values, [key]: e.target.checked })}
+          />
+          {label}
+          {supported === false && " (non pris en charge)"}
+        </label>
+      ))}
+      {(
+        [
           ["width", "Largeur", 16, 8192, 1],
           ["height", "Hauteur", 16, 8192, 1],
-          ["fps", "Images / seconde", 1, 240, 0.1],
-          ["exposure_us", "Exposition · µs", 1, 1000000, 1],
-          ["gain", "Gain", 0, 100, 0.1],
+          ["fps", "Limite FPS manuelle", 0.1, undefined, 0.1],
+          ["exposure_us", "Exposition manuelle · µs", 1, undefined, 1],
+          ["gain", "Gain manuel", 0, undefined, 0.1],
         ] as const
       ).map(([key, label, min, max, step]) => (
         <label key={key}>
           {label}
           <input
+            disabled={
+              (key === "fps" && values.fps_unlimited) ||
+              (key === "exposure_us" && values.auto_exposure) ||
+              (key === "gain" && values.auto_gain)
+            }
             required
             type="number"
             value={values[key]}
@@ -53,8 +84,10 @@ export default function CameraSettings({
         </label>
       ))}
       <p className="muted">
-        L’application des paramètres redémarre l’acquisition. Reconnectez
-        ensuite la vidéo WebRTC.
+        Les FPS libres désactivent la limite de fréquence de la caméra.
+        L’exposition, le capteur et le réseau peuvent toujours limiter la
+        cadence réelle. L’application des paramètres redémarre l’acquisition.
+        Reconnectez ensuite la vidéo WebRTC.
       </p>
       <button disabled={busy} className="primary">
         {busy ? "Application…" : "Appliquer"}

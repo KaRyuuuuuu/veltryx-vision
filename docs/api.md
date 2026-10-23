@@ -18,6 +18,7 @@ Base : `/api/v1`. JSON UTF-8 ; erreurs `{ "error": "message" }`. Corps limités 
 | GET / PUT | `/cameras/{serial}/roi` | Tableau de ROI par série |
 | POST | `/cameras/{serial}/motion-test` | `{ "enabled": true }` active les pixels de diagnostic SSE |
 | POST | `/cameras/{serial}/screenshots` | `{ "format": "jpeg" }` ou `png` → capture créée, HTTP 201 |
+| GET | `/passages?serial=...&limit=100` | Passages complets (max. 200), une capture représentative et le nombre total d’images ; déclenchement prioritaire, image centrale pour les archives |
 | GET | `/screenshots?serial=...&limit=100` | Captures récentes, maximum 1 000 ; regrouper par `passage` |
 | GET | `/screenshots/{id}/image` | Image stockée |
 | GET | `/events` | SSE : `data:` contient type, serial, time et data |
@@ -58,3 +59,5 @@ Exemple `PUT /cameras/SIM-001/roi` :
 `capture.dropped` cumule les abandons des files des abonnés du hub ; `capture.acquisition_dropped` estime les trous des identifiants de frames lorsque le périphérique les fournit. `capture.measured_fps` mesure les frames reçues par Go, indépendamment du FPS configuré. `capture.latency_ms` est un délai local depuis l’horodatage de réception Go, pas la latence du réseau GigE ni de l’affichage. `video.bitrate_kbps` mesure les octets H.264 produits avant RTP/SRTP, pas le débit réseau total. L’aperçu JPEG n’entre pas dans les statistiques H.264.
 
 Statuts : 400 validation, 404 caméra/capture absente, 409 aucune image ou acquisition arrêtée, 422 refus de réglages matériels/négociation, 503 encodeur non disponible, 500 persistance/erreur interne. Après modification de résolution ou reconnexion, renégocier WebRTC.
+
+Les paramètres acceptent aussi `auto_exposure`, `auto_gain`, `fps_unlimited` (booléens). Les modes automatiques utilisent GenICam Continuous ; FPS libres désactive le limiteur matériel. Les valeurs manuelles associées sont ignorées quand le mode automatique correspondant est actif. `capabilities` expose les booléens de prise en charge. Les anciens clients qui omettent ces champs restent en mode manuel.

@@ -41,3 +41,22 @@ func TestPersistentConcurrentUpdates(t *testing.T) {
 		t.Fatal("mutable configuration escaped")
 	}
 }
+
+func TestAutomaticSettingsAndUnrestrictedFPS(t *testing.T) {
+	v := models.Settings{Width: 1920, Height: 1080, FPS: 500, Exposure: 2000, Gain: 0}
+	if e := ValidateSettings(v); e != nil {
+		t.Fatal("software FPS cap remains", e)
+	}
+	v.FPS = 0
+	v.FPSUnlimited = true
+	v.AutoExposure = true
+	v.AutoGain = true
+	v.Exposure = 0
+	if e := ValidateSettings(v); e != nil {
+		t.Fatal(e)
+	}
+	v.FPSUnlimited = false
+	if e := ValidateSettings(v); e == nil {
+		t.Fatal("zero manual FPS accepted")
+	}
+}

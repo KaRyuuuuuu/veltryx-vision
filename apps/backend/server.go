@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/cameras/{serial}/stats", s.stats)
 	mux.HandleFunc("GET /api/v1/cameras/{serial}/frame", s.frame)
 	mux.HandleFunc("POST /api/v1/cameras/{serial}/screenshots", s.screenshot)
+	mux.HandleFunc("GET /api/v1/passages", s.listPassages)
 	mux.HandleFunc("GET /api/v1/screenshots", s.listScreenshots)
 	mux.HandleFunc("GET /api/v1/screenshots/{id}/image", s.image)
 	mux.HandleFunc("GET /api/v1/events", s.events)
